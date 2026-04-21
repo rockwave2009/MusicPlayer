@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# PyInstaller
+*.manifest
+*.spec.bak
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 应用数据
+*.db
+*.sqlite
+downloaded.json
+
+# 下载的音乐（不上传用户数据）
+Music/
+
+# ffmpeg二进制（构建时下载）
+resources/ffmpeg/
+
+# Playwright浏览器
+.playwright/
