@@ -11,9 +11,20 @@ project_root = Path(os.getcwd())
 # 收集数据文件
 datas = []
 
-# 添加资源文件
+# 添加资源文件（如果存在）
 if (project_root / 'resources').exists():
     datas.append((str(project_root / 'resources'), 'resources'))
+
+# 检查图标文件是否存在
+icon_file = None
+if sys.platform == 'win32':
+    ico_path = project_root / 'resources' / 'icons' / 'app_icon.ico'
+    if ico_path.exists():
+        icon_file = str(ico_path)
+elif sys.platform == 'darwin':
+    icns_path = project_root / 'resources' / 'icons' / 'app_icon.icns'
+    if icns_path.exists():
+        icon_file = str(icns_path)
 
 a = Analysis(
     ['src/main.py'],
@@ -53,24 +64,30 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-exe = EXE(
-    pyz,
-    a.scripts,
-    [],
-    exclude_binaries=True,
-    name='MusicPlayer',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    console=False,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon='resources/icons/app_icon.ico' if sys.platform == 'win32' else 'resources/icons/app_icon.icns',
-)
+# EXE配置 - 只有在图标文件存在时才使用图标
+exe_kwargs = {
+    'pyz': pyz,
+    'a': a.scripts,
+    'console': [],
+    'exclude_binaries': True,
+    'name': 'MusicPlayer',
+    'debug': False,
+    'bootloader_ignore_signals': False,
+    'strip': False,
+    'upx': True,
+    'console': False,
+    'disable_windowed_traceback': False,
+    'argv_emulation': False,
+    'target_arch': None,
+    'codesign_identity': None,
+    'entitlements_file': None,
+}
+
+# 只有图标文件存在时才添加icon参数
+if icon_file:
+    exe_kwargs['icon'] = icon_file
+
+exe = EXE(**exe_kwargs)
 
 coll = COLLECT(
     exe,
@@ -85,15 +102,19 @@ coll = COLLECT(
 
 # macOS app bundle
 if sys.platform == 'darwin':
-    app = BUNDLE(
-        coll,
-        name='MusicPlayer.app',
-        icon='resources/icons/app_icon.icns',
-        bundle_identifier='com.rockwave.musicplayer',
-        info_plist={
+    bundle_kwargs = {
+        'coll': coll,
+        'name': 'MusicPlayer.app',
+        'bundle_identifier': 'com.rockwave.musicplayer',
+        'info_plist': {
             'NSHighResolutionCapable': 'True',
             'CFBundleShortVersionString': '1.0.0',
             'CFBundleVersion': '1.0.0',
             'NSAppleEventsUsageDescription': 'MusicPlayer needs to control audio playback.',
         },
-    )
+    }
+    # 只有图标文件存在时才添加icon参数
+    if icon_file:
+        bundle_kwargs['icon'] = icon_file
+    
+    app = BUNDLE(**bundle_kwargs)
