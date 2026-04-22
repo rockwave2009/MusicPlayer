@@ -47,13 +47,17 @@ jobs:
       
       - name: Build with PyInstaller
         run: |
-          # 根据架构设置目标
-          if [[ "${{ matrix.arch }}" == "arm64" ]]; then
-            export PYINSTALLER_ARCH="--target-arch arm64"
+          if [[ "${{ matrix.arch }}" == "x86_64" ]]; then
+            # 为x86_64创建临时spec文件
+            cp music_player.spec music_player_x86.spec
+            # 修改spec文件以明确指定x86_64架构
+            sed -i '' 's/^# EXE配置 - 只有在图标文件存在时才使用图标$/&\n    target_arch = \"x86_64\"/' music_player_x86.spec
+            sed -i '' 's/\x27target_arch\x27: None,/\x27target_arch\x27: target_arch,/' music_player_x86.spec
+            pyinstaller music_player_x86.spec
           else
-            export PYINSTALLER_ARCH="--target-arch x86_64"
+            # ARM64架构，使用默认设置
+            pyinstaller music_player.spec
           fi
-          pyinstaller $PYINSTALLER_ARCH music_player.spec
       
       - name: Create DMG
         run: |
