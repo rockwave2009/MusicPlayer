@@ -87,34 +87,33 @@ exe_kwargs = {
 if icon_file:
     exe_kwargs['icon'] = icon_file
 
+# 创建EXE对象
 exe = EXE(**exe_kwargs)
-
-coll = COLLECT(
-    exe,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='MusicPlayer',
-)
 
 # macOS app bundle
 if sys.platform == 'darwin':
-    bundle_kwargs = {
-        'coll': coll,
-        'name': 'MusicPlayer.app',
-        'bundle_identifier': 'com.rockwave.musicplayer',
-        'info_plist': {
+    # macOS直接使用EXE创建BUNDLE
+    app = BUNDLE(
+        exe,
+        name='MusicPlayer.app',
+        bundle_identifier='com.rockwave.musicplayer',
+        info_plist={
             'NSHighResolutionCapable': 'True',
             'CFBundleShortVersionString': '1.0.0',
             'CFBundleVersion': '1.0.0',
             'NSAppleEventsUsageDescription': 'MusicPlayer needs to control audio playback.',
         },
-    }
-    # 只有图标文件存在时才添加icon参数
-    if icon_file:
-        bundle_kwargs['icon'] = icon_file
-    
-    app = BUNDLE(**bundle_kwargs)
+        icon=icon_file if icon_file else None,
+    )
+else:
+    # Windows使用COLLECT
+    coll = COLLECT(
+        exe,
+        a.binaries,
+        a.zipfiles,
+        a.datas,
+        strip=False,
+        upx=True,
+        upx_exclude=[],
+        name='MusicPlayer',
+    )
