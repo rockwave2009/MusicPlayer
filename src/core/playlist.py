@@ -444,3 +444,68 @@ class PlaylistManager:
             "total_duration": total_duration,
             "total_size": total_size
         }
+    
+    def _get_track_id_by_path(self, file_path: str) -> Optional[int]:
+        """通过文件路径获取曲目ID"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('SELECT id FROM tracks WHERE file_path = ?', (file_path,))
+        result = cursor.fetchone()
+        conn.close()
+        return result[0] if result else None
+    
+    def add_track_by_file_path(self, playlist_id: int, file_path: str) -> bool:
+        """通过文件路径添加曲目到播放列表"""
+        track_id = self._get_track_id_by_path(file_path)
+        if track_id is None:
+            return False
+        self.add_track_to_playlist(playlist_id, track_id)
+        return True
+    
+    def remove_track_by_file_path(self, playlist_id: int, file_path: str) -> bool:
+        """通过文件路径从播放列表移除曲目"""
+        track_id = self._get_track_id_by_path(file_path)
+        if track_id is None:
+            return False
+        self.remove_track_from_playlist(playlist_id, track_id)
+        return True
+    
+    def is_track_in_playlist(self, playlist_id: int, file_path: str) -> bool:
+        """检查曲目是否已在播放列表中"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT 1 FROM playlist_tracks pt
+            JOIN tracks t ON pt.track_id = t.id
+            WHERE pt.playlist_id = ? AND t.file_path = ?
+        ''', (playlist_id, file_path))
+        result = cursor.fetchone() is not None
+        conn.close()
+        return result
+    
+    def add_to_favorites_by_path(self, file_path: str) -> bool:
+        """通过文件路径添加曲目到收藏（设置5星评分）"""
+        track_id = self._get_track_id_by_path(file_path)
+        if track_id is None:
+            return False
+        self.add_to_favorites(track_id)
+        return True
+    
+    def remove_from_favorites_by_path(self, file_path: str) -> bool:
+        """通过文件路径从收藏中移除曲目"""
+        track_id = self._get_track_id_by_path(file_path)
+        if track_id is None:
+            return False
+        self.remove_from_favorites(track_id)
+        return True
+    
+    def is_favorite(self, file_path: str) -> bool:
+        """检查曲目是否已收藏"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT rating FROM tracks WHERE file_path = ?
+        ''', (file_path,))
+        result = cursor.fetchone()
+        conn.close()
+        return result is not None and result[0] == 5

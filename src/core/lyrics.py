@@ -290,3 +290,9 @@ class LyricsManager(QObject):
         if self.lyrics:
             return self.lyrics[-1].time
         return 0.0
+    
+    def get_line_time(self, index: int) -> float:
+        """获取指定索引歌词行的时间点（秒）"""
+        if 0 <= index < len(self.lyrics):
+            return self.lyrics[index].time
+        return 0.0

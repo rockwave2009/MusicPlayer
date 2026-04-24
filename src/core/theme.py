@@ -212,6 +212,32 @@ LIGHT_THEME = """
         border-radius: 4px;
         background-color: #F5F5F5;
     }
+    
+    /* 歌词行样式 */
+    QLabel[lyricLine="true"] {
+        color: #888888;
+        padding: 8px 16px;
+        background: transparent;
+    }
+    
+    QLabel[lyricLine="true"][current="true"] {
+        color: #00AAFF;
+        padding: 12px 16px;
+        background: rgba(0, 170, 255, 0.1);
+        border-radius: 8px;
+    }
+    
+    /* 辅助文字样式 */
+    QLabel[role="hint"] {
+        color: #aaaaaa;
+    }
+    
+    QLabel[role="subtitle"] {
+        font-size: 14px;
+        font-weight: bold;
+        color: #333333;
+        background: #f0f0f0;
+    }
 """
 
 # 深色主题样式
@@ -412,6 +438,32 @@ DARK_THEME = """
         border: 1px solid #404040;
         border-radius: 4px;
         background-color: #383838;
+    }
+    
+    /* 歌词行样式 */
+    QLabel[lyricLine="true"] {
+        color: #666666;
+        padding: 8px 16px;
+        background: transparent;
+    }
+    
+    QLabel[lyricLine="true"][current="true"] {
+        color: #33BBFF;
+        padding: 12px 16px;
+        background: rgba(0, 170, 255, 0.15);
+        border-radius: 8px;
+    }
+    
+    /* 辅助文字样式 */
+    QLabel[role="hint"] {
+        color: #888888;
+    }
+    
+    QLabel[role="subtitle"] {
+        font-size: 14px;
+        font-weight: bold;
+        color: #E0E0E0;
+        background: #2D2D2D;
     }
 """
 

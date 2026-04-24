@@ -210,10 +210,13 @@ class AudioPlayer(QObject):
                     self._player_path, '-nodisp', '-autoexit', 
                     '-loglevel', 'quiet',
                     '-volume', str(self._volume),
-                    file_path
                 ]
+                # 支持从指定位置开始播放（seek / resume）
+                if self._paused_position > 0:
+                    cmd.extend(['-ss', str(self._paused_position)])
+                cmd.append(file_path)
             else:
-                # afplay (不支持AAC)
+                # afplay (不支持AAC，也不支持seek)
                 cmd = [self._player_path, file_path]
             
             self._process = subprocess.Popen(

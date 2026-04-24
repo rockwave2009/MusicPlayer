@@ -28,40 +28,30 @@ class LyricLineWidget(QLabel):
         self._setup_style()
     
     def _setup_style(self):
-        """设置样式"""
+        """设置样式 - 使用属性让主题样式表控制颜色"""
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setWordWrap(True)
         self.setFont(QFont("Microsoft YaHei", 12))
-        self.setStyleSheet("""
-            QLabel {
-                color: #888888;
-                padding: 8px 16px;
-                background: transparent;
-            }
-        """)
+        self.setProperty("lyricLine", True)
+        self.setProperty("current", False)
+        self._apply_style()
+    
+    def _apply_style(self):
+        """应用样式 - 只设置布局属性，颜色由主题样式表控制"""
+        if self.is_current:
+            self.setFont(QFont("Microsoft YaHei", 14, QFont.Weight.Bold))
+            self.setProperty("current", True)
+        else:
+            self.setFont(QFont("Microsoft YaHei", 12))
+            self.setProperty("current", False)
+        # 强制刷新样式
+        self.style().unpolish(self)
+        self.style().polish(self)
     
     def set_current(self, is_current: bool):
         """设置是否为当前播放行"""
         self.is_current = is_current
-        if is_current:
-            self.setFont(QFont("Microsoft YaHei", 14, QFont.Weight.Bold))
-            self.setStyleSheet("""
-                QLabel {
-                    color: #00AAFF;
-                    padding: 12px 16px;
-                    background: rgba(0, 170, 255, 0.1);
-                    border-radius: 8px;
-                }
-            """)
-        else:
-            self.setFont(QFont("Microsoft YaHei", 12))
-            self.setStyleSheet("""
-                QLabel {
-                    color: #888888;
-                    padding: 8px 16px;
-                    background: transparent;
-                }
-            """)
+        self._apply_style()
 
 
 class LyricsDisplayWidget(QWidget):
@@ -72,6 +62,7 @@ class LyricsDisplayWidget(QWidget):
     
     # 信号定义
     line_clicked = pyqtSignal(int)  # 点击歌词行信号
+    download_lyrics_requested = pyqtSignal(str, str)  # 请求下载歌词信号 (query, audio_path)
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -84,22 +75,14 @@ class LyricsDisplayWidget(QWidget):
         self._connect_signals()
     
     def _init_ui(self):
-        """初始化UI"""
+        """初始化UI - 移除硬编码颜色，适配主题"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         
         # 歌词标题
         self.title_label = QLabel("歌词")
-        self.title_label.setStyleSheet("""
-            QLabel {
-                font-size: 14px;
-                font-weight: bold;
-                color: #333333;
-                padding: 8px;
-                background: #f0f0f0;
-                border-bottom: 1px solid #ddd;
-            }
-        """)
+        self.title_label.setProperty("role", "subtitle")
+        self.title_label.setStyleSheet("padding: 8px; border-bottom: 1px solid;")
         layout.addWidget(self.title_label)
         
         # 歌词滚动区域
@@ -110,18 +93,12 @@ class LyricsDisplayWidget(QWidget):
         self.scroll_area.setStyleSheet("""
             QScrollArea {
                 border: none;
-                background: #fafafa;
             }
             QScrollBar:vertical {
                 width: 8px;
-                background: #f0f0f0;
             }
             QScrollBar::handle:vertical {
-                background: #cccccc;
                 border-radius: 4px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background: #aaaaaa;
             }
         """)
         
@@ -138,48 +115,29 @@ class LyricsDisplayWidget(QWidget):
         # 底部工具栏
         toolbar = QFrame()
         toolbar.setFrameShape(QFrame.Shape.StyledPanel)
-        toolbar.setStyleSheet("background: #f0f0f0; padding: 4px;")
         toolbar_layout = QHBoxLayout(toolbar)
         
         # 加载歌词按钮
         self.load_btn = QPushButton("加载歌词")
-        self.load_btn.setStyleSheet("""
-            QPushButton {
-                padding: 6px 12px;
-                background: #00AAFF;
-                color: white;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background: #0088CC;
-            }
-        """)
+        self.load_btn.setProperty("role", "primary")
         self.load_btn.clicked.connect(self._load_lyrics_file)
         toolbar_layout.addWidget(self.load_btn)
         
         # 自动查找按钮
         self.auto_find_btn = QPushButton("自动查找")
-        self.auto_find_btn.setStyleSheet("""
-            QPushButton {
-                padding: 6px 12px;
-                background: #555555;
-                color: white;
-                border: none;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background: #333333;
-            }
-        """)
         self.auto_find_btn.clicked.connect(self._auto_find_lyrics)
         toolbar_layout.addWidget(self.auto_find_btn)
+        
+        # 下载歌词按钮
+        self.download_lyrics_btn = QPushButton("下载歌词")
+        self.download_lyrics_btn.clicked.connect(self._download_lyrics)
+        toolbar_layout.addWidget(self.download_lyrics_btn)
         
         toolbar_layout.addStretch()
         
         # 歌词状态
         self.status_label = QLabel("未加载歌词")
-        self.status_label.setStyleSheet("color: #888888;")
+        self.status_label.setProperty("role", "hint")
         toolbar_layout.addWidget(self.status_label)
         
         layout.addWidget(toolbar)
@@ -201,6 +159,10 @@ class LyricsDisplayWidget(QWidget):
     def set_audio_file(self, audio_file_path: str):
         """设置音频文件路径（用于自动查找歌词）"""
         self.audio_file_path = audio_file_path
+        # 切换歌曲时立即清空歌词，避免显示上一首的歌词
+        self.lyrics_manager.clear()
+        self._display_lyrics()
+        self.status_label.setText("正在查找歌词...")
     
     def update_position(self, position: float):
         """更新播放位置"""
@@ -218,6 +180,8 @@ class LyricsDisplayWidget(QWidget):
     def _on_error(self, error_message: str):
         """错误处理"""
         self.status_label.setText(error_message)
+        # 出错时也刷新显示为暂无歌词
+        self._display_lyrics()
     
     def _display_lyrics(self):
         """显示歌词"""
@@ -229,13 +193,8 @@ class LyricsDisplayWidget(QWidget):
             # 显示"暂无歌词"提示
             no_lyrics_label = QLabel("暂无歌词")
             no_lyrics_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            no_lyrics_label.setStyleSheet("""
-                QLabel {
-                    color: #aaaaaa;
-                    font-size: 16px;
-                    padding: 40px;
-                }
-            """)
+            no_lyrics_label.setProperty("role", "hint")
+            no_lyrics_label.setStyleSheet("padding: 40px; font-size: 16px;")
             self.lyrics_layout.addWidget(no_lyrics_label)
             return
         
@@ -343,6 +302,41 @@ class LyricsDisplayWidget(QWidget):
         else:
             self.status_label.setText("请先加载音频文件")
     
+    def _download_lyrics(self):
+        """为当前音频下载歌词（通过在线搜索）"""
+        if not hasattr(self, 'audio_file_path') or not self.audio_file_path:
+            self.status_label.setText("请先加载音频文件")
+            return
+        
+        # 获取音频文件信息用于搜索
+        from mutagen import File
+        try:
+            audio = File(self.audio_file_path, easy=True)
+            title = audio.get('title', [''])[0] if audio else ''
+            artist = audio.get('artist', [''])[0] if audio else ''
+        except:
+            title = ''
+            artist = ''
+        
+        # 如果没有元数据，使用文件名
+        if not title:
+            title = Path(self.audio_file_path).stem
+        
+        query = f"{artist} {title}".strip()
+        self.status_label.setText(f"正在搜索歌词: {query}...")
+        
+        # 发射信号让主窗口处理下载
+        self.download_lyrics_requested.emit(query, self.audio_file_path)
+    
+    def on_lyrics_downloaded(self, success: bool, message: str):
+        """歌词下载完成的回调"""
+        self.status_label.setText(message)
+        if success and hasattr(self, 'audio_file_path'):
+            # 重新尝试自动查找
+            self.lyrics_manager.auto_find_lyrics(self.audio_file_path)
+            if self.lyrics_manager.has_lyrics():
+                self._display_lyrics()
+    
     def clear(self):
         """清空歌词"""
         self.lyrics_manager.clear()
@@ -364,22 +358,15 @@ class MiniLyricsWidget(QWidget):
         self.lyrics_manager.current_line_changed.connect(self._on_line_changed)
     
     def _init_ui(self):
-        """初始化UI"""
+        """初始化UI - 移除硬编码颜色"""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 4, 8, 4)
         
         self.current_line_label = QLabel("暂无歌词")
         self.current_line_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.current_line_label.setWordWrap(True)
-        self.current_line_label.setStyleSheet("""
-            QLabel {
-                font-size: 14px;
-                color: #00AAFF;
-                padding: 8px;
-                background: rgba(0, 170, 255, 0.1);
-                border-radius: 8px;
-            }
-        """)
+        self.current_line_label.setProperty("role", "hint")
+        self.current_line_label.setStyleSheet("padding: 8px; border-radius: 8px;")
         layout.addWidget(self.current_line_label)
     
     def set_lyrics_manager(self, manager: LyricsManager):

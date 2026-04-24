@@ -8,7 +8,7 @@ from PyQt6.QtWidgets import (
     QListWidget, QListWidgetItem, QLabel, QPushButton,
     QSlider, QMenu, QToolBar, QStatusBar, QMenuBar,
     QFileDialog, QMessageBox, QTabWidget, QTreeWidget,
-    QTreeWidgetItem, QProgressBar, QFrame
+    QTreeWidgetItem, QProgressBar, QFrame, QLineEdit
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QKeySequence
@@ -28,12 +28,23 @@ class TrackListWidget(QListWidget):
     """曲目列表组件"""
     
     track_double_clicked = pyqtSignal(int)
+    track_right_clicked = pyqtSignal(object, object)  # track, global_position
     
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setAlternatingRowColors(True)
         self.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
         self.doubleClicked.connect(self._on_double_click)
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._on_context_menu)
+    
+    def _on_context_menu(self, position):
+        """右键菜单"""
+        item = self.itemAt(position)
+        if item:
+            track = item.data(Qt.ItemDataRole.UserRole)
+            if track:
+                self.track_right_clicked.emit(track, self.mapToGlobal(position))
     
     def _on_double_click(self, index):
         if index.isValid():
@@ -62,6 +73,7 @@ class PlaybackControlWidget(QWidget):
     next_clicked = pyqtSignal()
     volume_changed = pyqtSignal(int)
     position_changed = pyqtSignal(float)
+    favorite_clicked = pyqtSignal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -79,10 +91,17 @@ class PlaybackControlWidget(QWidget):
         self.pause_btn = QPushButton("⏸")
         self.stop_btn = QPushButton("⏹")
         self.next_btn = QPushButton("⏭")
+        self.favorite_btn = QPushButton("♥")
+        self.favorite_btn.setFixedSize(40, 40)
+        self.favorite_btn.setStyleSheet("QPushButton { color: #999; } QPushButton:checked { color: #FF6B6B; }")
+        self.favorite_btn.setCheckable(True)
         
         for btn in [self.previous_btn, self.play_btn, self.pause_btn, self.stop_btn, self.next_btn]:
             btn.setFixedSize(40, 40)
             button_layout.addWidget(btn)
+        
+        button_layout.addSpacing(20)
+        button_layout.addWidget(self.favorite_btn)
         
         layout.addLayout(button_layout)
         
@@ -118,6 +137,7 @@ class PlaybackControlWidget(QWidget):
         self.stop_btn.clicked.connect(self.stop_clicked)
         self.previous_btn.clicked.connect(self.previous_clicked)
         self.next_btn.clicked.connect(self.next_clicked)
+        self.favorite_btn.clicked.connect(self.favorite_clicked)
         
         self.volume_slider.valueChanged.connect(self._on_volume_changed)
         self.progress_slider.sliderMoved.connect(self._on_position_changed)
@@ -156,6 +176,23 @@ class LibraryWidget(QWidget):
     
     def _init_ui(self):
         layout = QVBoxLayout(self)
+        
+        # 搜索框
+        search_layout = QHBoxLayout()
+        search_label = QLabel("🔍")
+        search_layout.addWidget(search_label)
+        
+        self.search_input = QLineEdit()
+        self.search_input.setPlaceholderText("搜索歌曲、歌手、专辑...")
+        self.search_input.textChanged.connect(self._on_search_text_changed)
+        search_layout.addWidget(self.search_input)
+        
+        self.clear_search_btn = QPushButton("清空")
+        self.clear_search_btn.setFixedWidth(50)
+        self.clear_search_btn.clicked.connect(lambda: self.search_input.clear())
+        search_layout.addWidget(self.clear_search_btn)
+        
+        layout.addLayout(search_layout)
         
         # 操作按钮
         btn_layout = QHBoxLayout()
@@ -209,6 +246,24 @@ class LibraryWidget(QWidget):
         self.refresh_library()
         QMessageBox.information(self, "清理完成", f"已清理 {removed} 个不存在的文件")
     
+    def _on_search_text_changed(self, text: str):
+        """搜索框文本变化时实时过滤"""
+        query = text.strip()
+        self.all_tracks_list.clear_tracks()
+        
+        if not query:
+            # 空搜索显示全部
+            tracks = self.library.get_all_tracks()
+        else:
+            # 模糊搜索
+            tracks = self.library.search_tracks(query)
+        
+        for track in tracks:
+            self.all_tracks_list.add_track(track)
+        
+        # 切换到所有曲目tab
+        self.tab_widget.setCurrentIndex(0)
+    
     def refresh_library(self):
         try:
             self.all_tracks_list.clear_tracks()
@@ -239,6 +294,8 @@ class LibraryWidget(QWidget):
         self.all_tracks_list.clear_tracks()
         for track in tracks:
             self.all_tracks_list.add_track(track)
+        # 切换到"全部歌曲"tab 让用户看到结果
+        self.tab_widget.setCurrentIndex(0)
     
     def _on_album_clicked(self, item, column):
         album = item.text(0)
@@ -246,6 +303,8 @@ class LibraryWidget(QWidget):
         self.all_tracks_list.clear_tracks()
         for track in tracks:
             self.all_tracks_list.add_track(track)
+        # 切换到"全部歌曲"tab 让用户看到结果
+        self.tab_widget.setCurrentIndex(0)
 
 
 class PlaylistWidget(QWidget):
@@ -338,6 +397,15 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("专业音乐播放器")
         self.setMinimumSize(1200, 700)
         self.resize(1400, 800)
+        
+        # 启动时自动刷新音乐库
+        self._refresh_library_display()
+    
+    def _refresh_library_display(self):
+        """刷新音乐库显示并更新状态栏计数"""
+        self.library_widget.refresh_library()
+        stats = self.library.get_library_stats()
+        self.library_info_label.setText(f"音乐库: {stats.total_tracks} 首歌曲")
     
     def _init_ui(self):
         """初始化UI"""
@@ -566,38 +634,78 @@ class MainWindow(QMainWindow):
         self.playback_control.next_clicked.connect(self.player.next_track)
         self.playback_control.volume_changed.connect(self.player.set_volume)
         self.playback_control.position_changed.connect(self.player.seek)
+        self.playback_control.favorite_clicked.connect(self._toggle_favorite_current_track)
         
         # 音乐库信号
         self.library_widget.all_tracks_list.track_double_clicked.connect(self._play_track_from_library)
+        self.library_widget.all_tracks_list.track_right_clicked.connect(self._show_track_context_menu)
         
         # 播放列表信号
         self.playlist_widget.playlist_tracks.track_double_clicked.connect(self._play_track_from_playlist)
+        self.playlist_widget.playlist_tracks.track_right_clicked.connect(self._show_playlist_track_context_menu)
+        
+        # 当前播放列表信号
+        self.current_playlist_tracks.track_double_clicked.connect(self._play_track_from_current_playlist)
         
         # 在线搜索信号
         self.online_search_widget.download_completed.connect(self._on_download_completed)
+        
+        # 歌词信号
+        self.lyrics_widget.line_clicked.connect(self._on_lyric_clicked)
+        self.lyrics_widget.download_lyrics_requested.connect(self._on_download_lyrics_requested)
         
         # 主题改变信号
         self.theme_manager.theme_changed.connect(self._on_theme_changed)
     
     def _on_download_completed(self, filepath: str, filename: str):
         """下载完成处理"""
-        # 刷新音乐库
+        # 将新下载的歌曲加入音乐库数据库
+        try:
+            self.library._process_music_file(filepath)
+        except Exception as e:
+            print(f"加入音乐库失败: {e}")
+        
+        # 刷新音乐库显示
         self.library_widget.refresh_library()
         
-        # 尝试加载并播放下载的歌曲
-        track = AudioTrack(
-            file_path=filepath,
-            title=Path(filepath).stem
-        )
-        self.player.load_track(track)
-        self.player.play()
-        self._update_current_track_display(track)
+        # 获取完整曲目信息（从数据库读取，包含元数据）
+        tracks = self.library.search_tracks(Path(filepath).stem)
+        if tracks:
+            track = tracks[0]
+        else:
+            track = AudioTrack(
+                file_path=filepath,
+                title=Path(filepath).stem
+            )
         
-        # 尝试加载歌词
-        self.lyrics_widget.set_audio_file(filepath)
-        self.lyrics_widget._auto_find_lyrics()
+        # 把当前音乐库列表设为播放列表，从这首新歌开始播
+        all_tracks = self.library.get_all_tracks()
+        self.player.load_playlist(all_tracks)
+        # 找到这首新歌的索引
+        start_index = 0
+        for i, t in enumerate(all_tracks):
+            if t.file_path == filepath:
+                start_index = i
+                break
+        self.player.play_track_at(start_index)
+        self._update_current_playlist_display(all_tracks)
         
         self.status_label.setText(f"已下载并播放: {filename}")
+    
+    def _on_lyric_clicked(self, index: int):
+        """点击歌词行跳转到对应播放位置"""
+        lyrics_manager = self.lyrics_widget.lyrics_manager
+        time_seconds = lyrics_manager.get_line_time(index)
+        if time_seconds > 0:
+            self.player.seek(time_seconds)
+            self.status_label.setText(f"已跳转到: {int(time_seconds // 60):02d}:{int(time_seconds % 60):02d}")
+    
+    def _on_download_lyrics_requested(self, query: str, audio_path: str):
+        """处理歌词下载请求 - 使用在线搜索下载"""
+        # 设置搜索关键词并执行搜索
+        self.online_search_widget.search_input.setText(query)
+        self.online_search_widget._on_search()
+        self.status_label.setText(f"正在搜索歌词: {query}...")
     
     def _open_music_files(self):
         """打开音乐文件"""
@@ -620,10 +728,6 @@ class MainWindow(QMainWindow):
                 self.player.load_playlist(tracks)
                 self.player.play_track_at(0)
                 self._update_current_playlist_display(tracks)
-                
-                # 尝试自动加载歌词
-                self.lyrics_widget.set_audio_file(file_paths[0])
-                self.lyrics_widget._auto_find_lyrics()
     
     def _open_music_folder(self):
         """打开音乐文件夹"""
@@ -650,10 +754,7 @@ class MainWindow(QMainWindow):
         
         try:
             self.library.scan_directory(folder, recursive=True, callback=progress_callback)
-            self.library_widget.refresh_library()
-            
-            stats = self.library.get_library_stats()
-            self.library_info_label.setText(f"音乐库: {stats.total_tracks} 首歌曲")
+            self._refresh_library_display()
             self.status_label.setText("扫描完成")
             
         except Exception as e:
@@ -662,38 +763,237 @@ class MainWindow(QMainWindow):
             self.progress_bar.setVisible(False)
     
     def _play_track_from_library(self, index: int):
-        """从音乐库播放曲目"""
-        item = self.library_widget.all_tracks_list.item(index)
-        if item:
-            track = item.data(Qt.ItemDataRole.UserRole)
-            if track:
-                self.player.load_track(track)
-                self.player.play()
-                self._update_current_track_display(track)
-                
-                # 尝试加载歌词
-                self.lyrics_widget.set_audio_file(track.file_path)
-                self.lyrics_widget._auto_find_lyrics()
+        """从音乐库播放曲目 - 将当前列表设为播放列表以支持自动下一首"""
+        # 获取当前列表中的所有歌曲作为播放列表
+        tracks = []
+        for i in range(self.library_widget.all_tracks_list.count()):
+            item = self.library_widget.all_tracks_list.item(i)
+            if item:
+                t = item.data(Qt.ItemDataRole.UserRole)
+                if t:
+                    tracks.append(t)
+        
+        if not tracks or index >= len(tracks):
+            return
+        
+        self.player.load_playlist(tracks)
+        self.player.play_track_at(index)
+        self._update_current_playlist_display(tracks)
     
     def _play_track_from_playlist(self, index: int):
-        """从播放列表播放曲目"""
-        item = self.playlist_widget.playlist_tracks.item(index)
-        if item:
-            track = item.data(Qt.ItemDataRole.UserRole)
-            if track:
-                self.player.load_track(track)
-                self.player.play()
-                self._update_current_track_display(track)
+        """从播放列表播放曲目 - 将当前播放列表完整加载"""
+        # 获取当前播放列表中的所有歌曲
+        tracks = []
+        for i in range(self.playlist_widget.playlist_tracks.count()):
+            item = self.playlist_widget.playlist_tracks.item(i)
+            if item:
+                t = item.data(Qt.ItemDataRole.UserRole)
+                if t:
+                    tracks.append(t)
+        
+        if not tracks or index >= len(tracks):
+            return
+        
+        self.player.load_playlist(tracks)
+        self.player.play_track_at(index)
+        self._update_current_playlist_display(tracks)
+    
+    def _play_track_from_current_playlist(self, index: int):
+        """双击当前播放列表切歌"""
+        self.player.play_track_at(index)
+    
+    def _show_track_context_menu(self, track, global_pos):
+        """显示曲目右键菜单"""
+        menu = QMenu(self)
+        
+        # 播放
+        play_action = QAction("▶ 播放", self)
+        play_action.triggered.connect(lambda: self._play_track_from_library(track))
+        menu.addAction(play_action)
+        
+        menu.addSeparator()
+        
+        # 添加到播放列表子菜单
+        add_to_menu = QMenu("添加到播放列表", self)
+        playlists = self.playlist_manager.get_all_playlists()
+        if playlists:
+            for playlist in playlists:
+                action = QAction(f"{playlist.name} ({playlist.track_count}首)", self)
+                action.triggered.connect(
+                    lambda checked, pid=playlist.id, fp=track.file_path: 
+                    self._add_track_to_playlist(pid, fp)
+                )
+                add_to_menu.addAction(action)
+        else:
+            no_pl_action = QAction("(无播放列表)", self)
+            no_pl_action.setEnabled(False)
+            add_to_menu.addAction(no_pl_action)
+        menu.addMenu(add_to_menu)
+        
+        # 收藏
+        is_fav = self.playlist_manager.is_favorite(track.file_path)
+        fav_action = QAction("♥ 取消收藏" if is_fav else "♥ 收藏", self)
+        fav_action.triggered.connect(
+            lambda: self._toggle_favorite(track.file_path, not is_fav)
+        )
+        menu.addAction(fav_action)
+        
+        menu.addSeparator()
+        
+        # 删除歌曲
+        delete_action = QAction("🗑 删除歌曲文件", self)
+        delete_action.triggered.connect(lambda: self._delete_track(track))
+        menu.addAction(delete_action)
+        
+        menu.exec(global_pos)
+    
+    def _delete_track(self, track):
+        """删除歌曲文件及相关文件"""
+        from pathlib import Path
+        import os
+        
+        reply = QMessageBox.question(
+            self,
+            "确认删除",
+            f"确定要删除以下文件吗？\n\n{track.title} - {track.artist}\n\n"
+            f"路径: {track.file_path}\n\n此操作不可恢复！",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                deleted = []
+                failed = []
                 
-                # 尝试加载歌词
-                self.lyrics_widget.set_audio_file(track.file_path)
-                self.lyrics_widget._auto_find_lyrics()
+                # 删除音频文件
+                audio_path = Path(track.file_path)
+                if audio_path.exists():
+                    try:
+                        audio_path.unlink()
+                        deleted.append(audio_path.name)
+                    except Exception as e:
+                        failed.append(f"{audio_path.name}: {e}")
+                
+                # 删除同目录下的歌词文件
+                lrc_path = audio_path.with_suffix('.lrc')
+                if lrc_path.exists():
+                    try:
+                        lrc_path.unlink()
+                        deleted.append(lrc_path.name)
+                    except Exception as e:
+                        failed.append(f"{lrc_path.name}: {e}")
+                
+                # 从音乐库中移除
+                self.library.remove_track(track.file_path)
+                
+                # 从播放列表中移除（所有播放列表）
+                for playlist in self.playlist_manager.get_all_playlists():
+                    self.playlist_manager.remove_track_by_file_path(playlist.id, track.file_path)
+                
+                # 如果当前正在播放这首歌，停止播放
+                if self.player.current_track and self.player.current_track.file_path == track.file_path:
+                    self.player.stop()
+                
+                # 刷新音乐库显示
+                self.library_widget.refresh_library()
+                
+                if deleted:
+                    msg = f"已删除 {len(deleted)} 个文件:\n" + "\n".join(deleted)
+                    if failed:
+                        msg += f"\n\n删除失败:\n" + "\n".join(failed)
+                    self.status_label.setText(f"已删除: {track.title}")
+                else:
+                    msg = "文件不存在或已被删除"
+                
+                QMessageBox.information(self, "删除结果", msg)
+                
+            except Exception as e:
+                QMessageBox.warning(self, "删除失败", f"删除时发生错误:\n{str(e)}")
+    
+    def _show_playlist_track_context_menu(self, track, global_pos):
+        """显示播放列表内曲目右键菜单"""
+        menu = QMenu(self)
+        
+        # 从播放列表移除
+        current_item = self.playlist_widget.playlists_tree.currentItem()
+        if current_item:
+            playlist_id = current_item.data(0, Qt.ItemDataRole.UserRole)
+            remove_action = QAction("从播放列表移除", self)
+            remove_action.triggered.connect(
+                lambda: self._remove_track_from_playlist(playlist_id, track.file_path)
+            )
+            menu.addAction(remove_action)
+        
+        menu.addSeparator()
+        
+        # 收藏
+        is_fav = self.playlist_manager.is_favorite(track.file_path)
+        fav_action = QAction("♥ 取消收藏" if is_fav else "♥ 收藏", self)
+        fav_action.triggered.connect(
+            lambda: self._toggle_favorite(track.file_path, not is_fav)
+        )
+        menu.addAction(fav_action)
+        
+        menu.exec(global_pos)
+    
+    def _add_track_to_playlist(self, playlist_id, file_path):
+        """添加曲目到播放列表"""
+        if self.playlist_manager.add_track_by_file_path(playlist_id, file_path):
+            self.status_label.setText("已添加到播放列表")
+            self.playlist_widget.refresh_playlists()
+        else:
+            QMessageBox.warning(self, "添加失败", "歌曲不在音乐库中，请先扫描音乐库")
+    
+    def _remove_track_from_playlist(self, playlist_id, file_path):
+        """从播放列表移除曲目"""
+        if self.playlist_manager.remove_track_by_file_path(playlist_id, file_path):
+            self.status_label.setText("已从播放列表移除")
+            # 刷新当前播放列表曲目显示
+            current_item = self.playlist_widget.playlists_tree.currentItem()
+            if current_item:
+                self.playlist_widget._on_playlist_clicked(current_item, 0)
+            self.playlist_widget.refresh_playlists()
+        else:
+            self.status_label.setText("移除失败")
+    
+    def _toggle_favorite(self, file_path, add=True):
+        """切换曲目收藏状态"""
+        if add:
+            if self.playlist_manager.add_to_favorites_by_path(file_path):
+                self.status_label.setText("已收藏")
+            else:
+                self.status_label.setText("收藏失败")
+        else:
+            if self.playlist_manager.remove_from_favorites_by_path(file_path):
+                self.status_label.setText("已取消收藏")
+            else:
+                self.status_label.setText("取消收藏失败")
+        
+        # 更新播放控制区的收藏按钮状态
+        self._update_favorite_button()
+    
+    def _toggle_favorite_current_track(self):
+        """切换当前播放曲目的收藏状态"""
+        if self.player.current_track:
+            file_path = self.player.current_track.file_path
+            is_fav = self.playlist_manager.is_favorite(file_path)
+            self._toggle_favorite(file_path, not is_fav)
+    
+    def _update_favorite_button(self):
+        """更新收藏按钮状态"""
+        if self.player.current_track:
+            is_fav = self.playlist_manager.is_favorite(self.player.current_track.file_path)
+            self.playback_control.favorite_btn.setChecked(is_fav)
+        else:
+            self.playback_control.favorite_btn.setChecked(False)
     
     def _update_current_track_display(self, track: AudioTrack):
         """更新当前曲目显示"""
         self.current_track_label.setText(track.title or "未知标题")
         self.current_artist_label.setText(track.artist or "未知艺术家")
         self.current_album_label.setText(track.album or "未知专辑")
+        self._update_favorite_button()
     
     def _update_current_playlist_display(self, tracks: List[AudioTrack]):
         """更新当前播放列表显示"""
@@ -721,8 +1021,34 @@ class MainWindow(QMainWindow):
         self.lyrics_widget.update_position(position)
     
     def _on_track_changed(self, track_name: str):
-        """曲目改变处理"""
+        """曲目改变处理 - 统一更新UI和加载歌词"""
         self.setWindowTitle(f"专业音乐播放器 - {track_name}")
+        
+        if self.player.current_track:
+            # 更新歌曲信息显示（标题、艺术家、专辑）
+            self._update_current_track_display(self.player.current_track)
+            # 自动加载新歌曲的歌词
+            self.lyrics_widget.set_audio_file(self.player.current_track.file_path)
+            self.lyrics_widget._auto_find_lyrics()
+            
+            # 高亮当前播放列表中正在播放的歌曲
+            if 0 <= self.player.current_index < self.current_playlist_tracks.count():
+                self.current_playlist_tracks.setCurrentRow(self.player.current_index)
+                item = self.current_playlist_tracks.item(self.player.current_index)
+                if item:
+                    self.current_playlist_tracks.scrollToItem(item)
+            
+            # 高亮音乐库"所有曲目"列表中对应的歌曲（通过文件路径匹配）
+            current_path = self.player.current_track.file_path
+            all_tracks_list = self.library_widget.all_tracks_list
+            for i in range(all_tracks_list.count()):
+                item = all_tracks_list.item(i)
+                if item:
+                    track = item.data(Qt.ItemDataRole.UserRole)
+                    if track and track.file_path == current_path:
+                        all_tracks_list.setCurrentRow(i)
+                        all_tracks_list.scrollToItem(item)
+                        break
     
     def _on_error_occurred(self, error_message: str):
         """错误处理"""
