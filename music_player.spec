@@ -99,8 +99,8 @@ if sys.platform == 'darwin':
         bundle_identifier='com.rockwave.musicplayer',
         info_plist={
             'NSHighResolutionCapable': 'True',
-            'CFBundleShortVersionString': '1.0.0',
-            'CFBundleVersion': '1.0.0',
+            'CFBundleShortVersionString': '2.0',
+            'CFBundleVersion': '2.0',
             'NSAppleEventsUsageDescription': 'MusicPlayer needs to control audio playback.',
         },
         icon=icon_file if icon_file else None,

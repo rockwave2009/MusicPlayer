@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="professional-music-player",
-    version="1.0.0",
+    version="2.0",
     author="Music Player Team",
     author_email="musicplayer@example.com",
     description="一款专业的macOS音乐播放器软件",
